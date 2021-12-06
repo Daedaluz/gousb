@@ -1,9 +1,8 @@
 package usbfs
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
+	ioctl "github.com/daedaluz/goioctl"
 	"syscall"
 	"unsafe"
 )
@@ -12,37 +11,24 @@ const (
 	usbDevPath = "/dev/bus/usb"
 )
 
-func ioctl(fd int, ioc uint32, arg interface{}) (int, error) {
-	b := bytes.Buffer{}
-	if err := binary.Write(&b, binary.LittleEndian, arg); err != nil {
-		return -1, err
-	}
-	buff := b.Bytes()
-	r, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(ioc), uintptr(unsafe.Pointer(&buff[0])))
-	if e != syscall.Errno(0) {
-		return int(r), e
-	}
-	return int(r), nil
-}
-
 func GetDriver(fd int, iface uint32) (string, error) {
 	data := &usbdevfs_getdriver{
 		Interface: iface,
 	}
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), USBDEVFS_GETDRIVER, uintptr(unsafe.Pointer(data)))
-	if e == syscall.Errno(0) {
-		return data.String(), nil
+	e := ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_getdriver, uintptr(unsafe.Pointer(data)))
+	if e != nil {
+		return "", e
 	}
-	return "", e
+	return data.String(), nil
 }
 
 func GetConnectInfo(fd int) (uint8, error) {
 	info := &usbdevfs_connectinfo{}
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), USBDEVFS_CONNECTINFO, uintptr(unsafe.Pointer(info)))
-	if e == syscall.Errno(0) {
-		return info.Slow, nil
+	e := ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_connectionfo, uintptr(unsafe.Pointer(info)))
+	if e != nil {
+		return 0, e
 	}
-	return 0, e
+	return info.Slow, nil
 }
 
 func SetInterface(fd int, iface, setting uint32) error {
@@ -50,53 +36,33 @@ func SetInterface(fd int, iface, setting uint32) error {
 		Interface:  iface,
 		AltSetting: setting,
 	}
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), USBDEVFS_SETINTERFACE, uintptr(unsafe.Pointer(data)))
-	if e == syscall.Errno(0) {
-		return nil
-	}
-	return e
+	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_setinterface, uintptr(unsafe.Pointer(data)))
 }
 
 func ClaimInterface(fd, iface int) error {
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), USBDEVFS_CLAIMINTERFACE, uintptr(iface))
-	if e == syscall.Errno(0) {
-		return nil
-	}
-	return e
+	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_claiminterface, uintptr(iface))
 }
 
 func ReleaseInterface(fd, iface int) error {
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), USBDEVFS_RELEASEINTERFACE, uintptr(iface))
-	if e == syscall.Errno(0) {
-		return nil
-	}
-	return e
+	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_releaseinterface, uintptr(iface))
 }
 
 func Disconnect(fd int, iface uint32) error {
-	data := usbdevfs_ioctl{
+	data := &usbdevfs_ioctl{
 		Interface: iface,
 		IoctlCode: USBDEVFS_DISCONNECT,
 		Data:      0,
 	}
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), USBDEVFS_IOCTL, uintptr(unsafe.Pointer(&data)))
-	if e == syscall.Errno(0) {
-		return nil
-	}
-	return e
+	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_ioctl, uintptr(unsafe.Pointer(data)))
 }
 
 func Connect(fd int, iface uint32) error {
-	data := usbdevfs_ioctl{
+	data := &usbdevfs_ioctl{
 		Interface: iface,
 		IoctlCode: USBDEVFS_CONNECT,
 		Data:      0,
 	}
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), USBDEVFS_IOCTL, uintptr(unsafe.Pointer(&data)))
-	if e == syscall.Errno(0) {
-		return nil
-	}
-	return e
+	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_ioctl, uintptr(unsafe.Pointer(data)))
 }
 
 func ControlTransfer(fd int, typ uint8, request uint8, value uint16, index uint16, timeout uint32, payload []byte) (int, error) {
@@ -111,10 +77,7 @@ func ControlTransfer(fd int, typ uint8, request uint8, value uint16, index uint1
 		data.Length = uint16(len(payload))
 		data.Data = slicePtr(payload)
 	}
-	x, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), USBDEVFS_CONTROL, uintptr(unsafe.Pointer(data)))
-	if e == syscall.Errno(0) {
-		return int(x), nil
-	}
+	x, e := ioctl.IoctlX(uintptr(fd), ctl_usbdevfs_control, uintptr(unsafe.Pointer(data)))
 	return int(x), e
 }
 
@@ -127,19 +90,12 @@ func BulkTransfer(fd int, endpoint uint32, timeout uint32, payload []byte) (int,
 		data.Length = uint32(len(payload))
 		data.Data = slicePtr(payload)
 	}
-	x, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), USBDEVFS_BULK, uintptr(unsafe.Pointer(data)))
-	if e == syscall.Errno(0) {
-		return int(x), nil
-	}
+	x, e := ioctl.IoctlX(uintptr(fd), ctl_usbdevfs_bulk, uintptr(unsafe.Pointer(data)))
 	return int(x), e
 }
 
 func ResetDevice(fd int) error {
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), USBDEVFS_RESET, uintptr(0))
-	if e == syscall.Errno(0) {
-		return nil
-	}
-	return e
+	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_reset, 0)
 }
 
 func OpenDevice(busNumber, deviceNumber int) (int, error) {
