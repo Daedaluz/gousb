@@ -7,65 +7,19 @@ import (
 	"unsafe"
 )
 
-const (
-	usbDevPath = "/dev/bus/usb"
-)
+// Useful links:
+// https://www.engineersgarage.com/usb-requests-and-stages-of-control-transfer-part-4-6/
 
-func GetDriver(fd int, iface uint32) (string, error) {
-	data := &usbdevfs_getdriver{
-		Interface: iface,
-	}
-	e := ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_getdriver, uintptr(unsafe.Pointer(data)))
-	if e != nil {
-		return "", e
-	}
-	return data.String(), nil
-}
-
-func GetConnectInfo(fd int) (uint8, error) {
-	info := &usbdevfs_connectinfo{}
-	e := ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_connectionfo, uintptr(unsafe.Pointer(info)))
-	if e != nil {
-		return 0, e
-	}
-	return info.Slow, nil
-}
-
-func SetInterface(fd int, iface, setting uint32) error {
-	data := &usbdevfs_setinterface{
-		Interface:  iface,
-		AltSetting: setting,
-	}
-	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_setinterface, uintptr(unsafe.Pointer(data)))
-}
-
-func ClaimInterface(fd, iface int) error {
-	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_claiminterface, uintptr(iface))
-}
-
-func ReleaseInterface(fd, iface int) error {
-	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_releaseinterface, uintptr(iface))
-}
-
-func Disconnect(fd int, iface uint32) error {
-	data := &usbdevfs_ioctl{
-		Interface: iface,
-		IoctlCode: USBDEVFS_DISCONNECT,
-		Data:      0,
-	}
-	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_ioctl, uintptr(unsafe.Pointer(data)))
-}
-
-func Connect(fd int, iface uint32) error {
-	data := &usbdevfs_ioctl{
-		Interface: iface,
-		IoctlCode: USBDEVFS_CONNECT,
-		Data:      0,
-	}
-	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_ioctl, uintptr(unsafe.Pointer(data)))
-}
-
-func ControlTransfer(fd int, typ uint8, request uint8, value uint16, index uint16, timeout uint32, payload []byte) (int, error) {
+// ControlTransfer
+// fd: device file descriptor
+// typ: consists of Direction | Type | Recipient
+//      eg RequestDirectionIn | RequestTypeClass | RequestRecipientInterface
+// request: specific request.
+// value: message value, according to request.
+// index: message index value, according to request.
+// timeout: timeout in ms.
+// payload: data to send.
+func ControlTransfer(fd int, typ, request uint8, value, index uint16, timeout uint32, payload []byte) (int, error) {
 	data := &usbdevfs_ctrltransfer{
 		RequestType: typ,
 		Request:     request,
@@ -81,7 +35,7 @@ func ControlTransfer(fd int, typ uint8, request uint8, value uint16, index uint1
 	return int(x), e
 }
 
-func BulkTransfer(fd int, endpoint uint32, timeout uint32, payload []byte) (int, error) {
+func BulkTransfer(fd int, endpoint, timeout uint32, payload []byte) (int, error) {
 	data := &usbdevfs_bulktransfer{
 		Endpoint: endpoint,
 		Timeout:  timeout,
@@ -94,8 +48,66 @@ func BulkTransfer(fd int, endpoint uint32, timeout uint32, payload []byte) (int,
 	return int(x), e
 }
 
+func SetInterface(fd int, iface, setting uint32) error {
+	data := &usbdevfs_setinterface{
+		Interface:  iface,
+		AltSetting: setting,
+	}
+	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_setinterface, uintptr(unsafe.Pointer(data)))
+}
+
+func GetDriver(fd int, iface uint32) (string, error) {
+	data := &usbdevfs_getdriver{
+		Interface: iface,
+	}
+	e := ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_getdriver, uintptr(unsafe.Pointer(data)))
+	if e != nil {
+		return "", e
+	}
+	return data.String(), nil
+}
+
+func ClaimInterface(fd int, iface uint32) error {
+	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_claiminterface, uintptr(iface))
+}
+
+func ReleaseInterface(fd int, iface uint32) error {
+	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_releaseinterface, uintptr(iface))
+}
+
+func GetConnectInfo(fd int) (uint8, error) {
+	info := &usbdevfs_connectinfo{}
+	e := ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_connectionfo, uintptr(unsafe.Pointer(info)))
+	if e != nil {
+		return 0, e
+	}
+	return info.Slow, nil
+}
+
+// DriverIOCTL for talking directly with drivers
+func DriverIOCTL(fd int, iface uint32, request, data uintptr) error {
+	req := &usbdevfs_ioctl{
+		Interface: int32(iface),
+		IoctlCode: int32(request),
+		Data:      data,
+	}
+	return ioctl.Ioctl(uintptr(fd), request, uintptr(unsafe.Pointer(req)))
+}
+
 func ResetDevice(fd int) error {
 	return ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_reset, 0)
+}
+
+func GetCapabilities(fd int) (Capability, error) {
+	res := Capability(0)
+	if err := ioctl.Ioctl(uintptr(fd), ctl_usbdevfs_get_capabilities, uintptr(unsafe.Pointer(&res))); err != nil {
+		return 0, err
+	}
+	return res, nil
+}
+
+func SetConfiguration(fd, config int) error {
+	return nil
 }
 
 func OpenDevice(busNumber, deviceNumber int) (int, error) {
@@ -105,4 +117,16 @@ func OpenDevice(busNumber, deviceNumber int) (int, error) {
 		return -1, err
 	}
 	return fd, nil
+}
+
+func CloseDevice(fd int) error {
+	return syscall.Close(fd)
+}
+
+func Disconnect(fd int, iface uint32) error {
+	return DriverIOCTL(fd, iface, ctl_usbdevfs_disconnect, 0)
+}
+
+func Connect(fd int, iface uint32) error {
+	return DriverIOCTL(fd, iface, ctl_usbdevfs_connect, 0)
 }

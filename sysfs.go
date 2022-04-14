@@ -103,10 +103,6 @@ func EnumerateDevices() ([]*Device, error) {
 			strings.Contains(name, ":") {
 			continue
 		}
-		descriptors, err := parseDescriptor(name)
-		if err != nil {
-			return nil, err
-		}
 		busNum, devNum, err := getDeviceAddress(name)
 		if err != nil {
 			return nil, err
@@ -114,7 +110,6 @@ func EnumerateDevices() ([]*Device, error) {
 		device := &Device{
 			BusNumber:    busNum,
 			DeviceNumber: devNum,
-			Descriptors:  descriptors,
 			fd:           -1,
 		}
 		res = append(res, device)

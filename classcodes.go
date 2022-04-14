@@ -6,6 +6,7 @@ import "fmt"
 
 type (
 	ClassCode uint8
+	SubClass  uint8
 )
 
 func (code ClassCode) String() string {
@@ -49,27 +50,27 @@ const (
 
 var (
 	classCodeMap = map[ClassCode]string{
-		0x00: "UseInterfaceDescriptors",
-		0x01: "InterfaceAudio",
-		0x03: "InterfaceHID",
-		0x05: "InterfacePhysical",
-		0x06: "InterfaceImage",
-		0x07: "InterfacePrinter",
-		0x08: "InterfaceMassStorage",
-		0x0A: "InterfaceCDCData",
-		0x0B: "InterfaceSmartCard",
-		0x0D: "InterfaceContentSecurity",
-		0x0E: "InterfaceVideo",
-		0x0F: "InterfacePersonalHealthcare",
-		0x10: "InterfaceAudioVideo",
-		0x12: "InterfaceTypeCBridgeClass",
-		0xE0: "InterfaceWirelessController",
-		0xFE: "InterfaceApplicationSpecific",
-		0x09: "DeviceHub",
-		0x11: "DeviceBillBoard",
-		0x02: "CDCControl",
-		0xDC: "Diagnostic",
-		0xEF: "Misc",
-		0xFF: "VendorSpecific",
+		0x00:                                  "UseInterfaceDescriptors",
+		ClassCodeInterfaceAudio:               "InterfaceAudio",
+		ClassCodeInterfaceHID:                 "InterfaceHID",
+		ClassCodeInterfacePhysical:            "InterfacePhysical",
+		ClassCodeInterfaceImage:               "InterfaceImage",
+		ClassCodeInterfacePrinter:             "InterfacePrinter",
+		ClassCodeInterfaceMassStorage:         "InterfaceMassStorage",
+		ClassCodeInterfaceCDCData:             "InterfaceCDCData",
+		ClassCodeInterfaceSmartCard:           "InterfaceSmartCard",
+		ClassCodeInterfaceContentSecurity:     "InterfaceContentSecurity",
+		ClassCodeInterfaceVideo:               "InterfaceVideo",
+		ClassCodeInterfacePersonalHealthcare:  "InterfacePersonalHealthcare",
+		ClassCodeInterfaceAudioVideo:          "InterfaceAudioVideo",
+		ClassCodeInterfaceTypeCBridgeClass:    "InterfaceTypeCBridgeClass",
+		ClassCodeInterfaceWirelessController:  "InterfaceWirelessController",
+		ClassCodeInterfaceApplicationSpecific: "InterfaceApplicationSpecific",
+		ClassCodeDeviceHub:                    "DeviceHub",
+		ClassCodeDeviceBillBoard:              "DeviceBillBoard",
+		ClassCodeCDCControl:                   "CDCControl",
+		ClassCodeDiagnostic:                   "Diagnostic",
+		ClassCodeMisc:                         "Misc",
+		ClassCodeVendorSpecific:               "VendorSpecific",
 	}
 )

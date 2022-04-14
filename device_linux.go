@@ -11,52 +11,12 @@ const (
 )
 
 type (
-	RequestType uint8
-	Device      struct {
+	Device struct {
 		fd           int
 		BusNumber    int
 		DeviceNumber int
-		Descriptors  []Descriptor
 	}
 )
-
-const (
-	RequestDirectionIn  = RequestType(0b10000000)
-	RequestDirectionOut = RequestType(0b00000000)
-
-	RequestTypeStandard = RequestType(0b00000000)
-	RequestTypeClass    = RequestType(0b00100000)
-	RequestTypeVendor   = RequestType(0b01000000)
-	RequestTypeReserved = RequestType(0b01100000)
-
-	RequestRecipientDevice    = RequestType(0b00000000)
-	RequestRecipientInterface = RequestType(0b00000001)
-	RequestRecipientEndpoint  = RequestType(0b00000010)
-	RequestRecipientOther     = RequestType(0b00000011)
-)
-
-const (
-	RequestGetStatus    = 0x00
-	RequestClearFeature = 0x01
-	RequestSetFeature   = 0x03
-)
-
-const (
-	RequestDeviceSetAddress       = 0x05
-	RequestDeviceGetDescriptor    = 0x06
-	RequestDeviceSetDescriptor    = 0x07
-	RequestDeviceGetConfiguration = 0x08
-	RequestDeviceSetConfiguration = 0x09
-)
-
-const (
-	RequestInterfaceGetInterface = 0x0a
-	RequestInterfaceSetInterface = 0x11
-)
-
-func (d *Device) GetDeviceDescriptor() *DeviceDescriptor {
-	return d.Descriptors[0].(*DeviceDescriptor)
-}
 
 func (d *Device) Open() error {
 	if d.fd != -1 {
