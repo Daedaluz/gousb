@@ -15,6 +15,7 @@ type (
 		fd           int
 		BusNumber    int
 		DeviceNumber int
+		Name         string
 	}
 )
 

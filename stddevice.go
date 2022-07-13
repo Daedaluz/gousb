@@ -508,3 +508,28 @@ func (d *Device) SyncFrame(endpoint uint8) error {
 		ReqSynchFrame, 0, uint16(endpoint), data)
 	return err
 }
+
+func (d *Device) GetDeviceDescriptor() (*DeviceDescriptor, error) {
+	data, err := d.GetDescriptor(DescriptorTypeDevice, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	desc, err := ParseDescriptor(data)
+	if err != nil {
+		return nil, err
+	}
+	return desc.(*DeviceDescriptor), nil
+}
+
+func (d *Device) GetStringDescriptor(idx uint8, langID uint16) (string, error) {
+	data, err := d.GetDescriptor(DescriptorTypeString, idx, langID)
+	if err != nil {
+		return "", err
+	}
+	desc, err := ParseDescriptor(data)
+	if err != nil {
+		return "", err
+	}
+	strDesc := desc.(*StringDescriptor)
+	return string(strDesc.Data), nil
+}

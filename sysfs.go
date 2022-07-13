@@ -1,12 +1,8 @@
 package usb
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -16,8 +12,12 @@ const (
 	sysfsDeviceDir = "/sys/bus/usb/devices"
 )
 
-func readSysfsAttrInt(devName, attrName string) (int, error) {
-	fileName := fmt.Sprintf("%s/%s/%s", sysfsDeviceDir, devName, attrName)
+func formatAttrFileName(devName, attrName string) string {
+	return fmt.Sprintf("%s/%s/%s", sysfsDeviceDir, devName, attrName)
+}
+
+func readSysfsAttrInt(devName, attrName string, base, bitSize int) (int64, error) {
+	fileName := formatAttrFileName(devName, attrName)
 	var err error
 	var data []byte
 	var value int64
@@ -26,67 +26,41 @@ func readSysfsAttrInt(devName, attrName string) (int, error) {
 		return 0, err
 	}
 	strData := strings.Trim(string(data), "\n")
-	value, err = strconv.ParseInt(strData, 10, 64)
+	value, err = strconv.ParseInt(strData, base, bitSize)
 	if err != nil {
 		return 0, err
 	}
-	return int(value), nil
+	return value, nil
+}
+
+func readSysfsAttrString(devName, attrName string) (string, error) {
+	fileName := formatAttrFileName(devName, attrName)
+	var err error
+	var data []byte
+	data, err = ioutil.ReadFile(fileName)
+	if err != nil {
+		return "", err
+	}
+	strData := strings.Trim(string(data), "\n")
+	return strData, nil
 }
 
 func openSysfsAttr(devName, attrName string) (*os.File, error) {
-	fileName := fmt.Sprintf("%s/%s/%s", sysfsDeviceDir, devName, attrName)
-	return os.Open(fileName)
+	fileName := formatAttrFileName(devName, attrName)
+	file, err := os.Open(fileName)
+	return file, err
 }
 
 func getDeviceAddress(devName string) (int, int, error) {
-	busNum, err := readSysfsAttrInt(devName, "busnum")
+	busNum, err := readSysfsAttrInt(devName, "busnum", 10, 64)
 	if err != nil {
 		return 0, 0, err
 	}
-	devNum, err := readSysfsAttrInt(devName, "devnum")
+	devNum, err := readSysfsAttrInt(devName, "devnum", 10, 64)
 	if err != nil {
 		return 0, 0, err
 	}
-	return busNum, devNum, nil
-}
-
-func readDescriptorHeader(i io.Reader) (DescriptorHeader, error) {
-	header := DescriptorHeader{
-		Length:         0,
-		DescriptorType: 0,
-	}
-	err := binary.Read(i, binary.BigEndian, &header)
-	return header, err
-}
-
-func parseDescriptor(devName string) ([]Descriptor, error) {
-	var hdr DescriptorHeader
-	var err error
-	var x *os.File
-	res := make([]Descriptor, 0, 10)
-	x, err = openSysfsAttr(devName, "descriptors")
-	if err != nil {
-		return nil, err
-	}
-	defer x.Close()
-	for hdr, err = readDescriptorHeader(x); err == nil; hdr, err = readDescriptorHeader(x) {
-		// Create a separate input stream for descriptor to prevent overstepping descriptor boundary.
-		descriptorData := make([]byte, hdr.Length-2)
-		if _, err := io.ReadFull(x, descriptorData); err != nil {
-			log.Println("Bad descriptor data:", err)
-			continue
-		}
-		descriptorReader := bytes.NewReader(descriptorData)
-		desc, descErr := createDescriptor(hdr, descriptorReader)
-		if descErr != nil {
-			return nil, descErr
-		}
-		res = append(res, desc)
-	}
-	if err != io.EOF {
-		return nil, err
-	}
-	return res, nil
+	return int(busNum), int(devNum), nil
 }
 
 func EnumerateDevices() ([]*Device, error) {
@@ -108,6 +82,7 @@ func EnumerateDevices() ([]*Device, error) {
 			return nil, err
 		}
 		device := &Device{
+			Name:         name,
 			BusNumber:    busNum,
 			DeviceNumber: devNum,
 			fd:           -1,
@@ -115,6 +90,14 @@ func EnumerateDevices() ([]*Device, error) {
 		res = append(res, device)
 	}
 	return res, nil
+}
+
+func (d *Device) ReadSysfsAttrInt(attrName string, base, bitSize int) (int64, error) {
+	return readSysfsAttrInt(d.Name, attrName, base, bitSize)
+}
+
+func (d *Device) ReadSysfsString(attrName string) (string, error) {
+	return readSysfsAttrString(d.Name, attrName)
 }
 
 func FindDevices(filter func(device *Device) bool) ([]*Device, error) {
@@ -126,6 +109,80 @@ func FindDevices(filter func(device *Device) bool) ([]*Device, error) {
 	for _, dev := range allDevices {
 		if filter(dev) {
 			res = append(res, dev)
+		}
+	}
+	return res, nil
+}
+
+type SysfsDescriptors struct {
+	//	IDProduct           uint16
+	//	IDVendor            uint16
+	Manufacturer string
+	Product      string
+	//	BNumConfigurations  int
+	//	BConfigurationValue int
+	//	BDeviceClass        ClassCode
+	//	BDeviceSubClass     SubClass
+	DeviceDescriptor *DeviceDescriptor
+	Interfaces       []*InterfaceDescriptor
+	Endpoints        map[*InterfaceDescriptor][]*EndpointDescriptor
+	OtherDescriptors []Descriptor
+}
+
+func (d *Device) GetSysfsDescriptors() (*SysfsDescriptors, error) {
+	res := &SysfsDescriptors{
+		DeviceDescriptor: nil,
+		Interfaces:       make([]*InterfaceDescriptor, 0, 10),
+		Endpoints:        make(map[*InterfaceDescriptor][]*EndpointDescriptor, 20),
+		OtherDescriptors: make([]Descriptor, 0, 20),
+	}
+	//	if x, err := d.ReadSysfsAttrInt("idProduct", 16, 0); err == nil {
+	//		res.IDProduct = uint16(x)
+	//	}
+	//	if x, err := d.ReadSysfsAttrInt("idVendor", 16, 0); err == nil {
+	//		res.IDVendor = uint16(x)
+	//	}
+	if x, err := d.ReadSysfsString("manufacturer"); err == nil {
+		res.Manufacturer = x
+	}
+	if x, err := d.ReadSysfsString("product"); err == nil {
+		res.Product = x
+	}
+	//	if x, err := d.ReadSysfsAttrInt("bConfigurationValue", 10, 0); err == nil {
+	//		res.BConfigurationValue = int(x)
+	//	}
+	//	if x, err := d.ReadSysfsAttrInt("bNumConfigurations", 10, 0); err == nil {
+	//		res.BNumConfigurations = int(x)
+	//	}
+	//	if x, err := d.ReadSysfsAttrInt("bDeviceClass", 16, 0); err == nil {
+	//		res.BDeviceClass = ClassCode(x)
+	//	}
+	//	if x, err := d.ReadSysfsAttrInt("bDeviceSubClass", 16, 0); err == nil {
+	//		res.BDeviceSubClass = SubClass(x)
+	//	}
+	if file, err := openSysfsAttr(d.Name, "descriptors"); err == nil {
+		var lastInterfaceDescriptor *InterfaceDescriptor
+		defer file.Close()
+		err := ReadDescriptors(file, func(d Descriptor) {
+			switch x := d.(type) {
+			case *DeviceDescriptor:
+				res.DeviceDescriptor = x
+			case *InterfaceDescriptor:
+				lastInterfaceDescriptor = x
+				res.Interfaces = append(res.Interfaces, x)
+			case *EndpointDescriptor:
+				ep, exist := res.Endpoints[lastInterfaceDescriptor]
+				if !exist {
+					ep = make([]*EndpointDescriptor, 0, 4)
+				}
+				ep = append(ep, x)
+				res.Endpoints[lastInterfaceDescriptor] = ep
+			default:
+				res.OtherDescriptors = append(res.OtherDescriptors, x)
+			}
+		})
+		if err != nil {
+			return nil, err
 		}
 	}
 	return res, nil

@@ -538,6 +538,7 @@ type (
 		// wBytesPerInterval is reserved and must be set to zero for control and bulk endpoints.
 		WBytesPerInterval uint16
 	}
+
 	// SSPIsochronousEndpointCompanionDescriptor contains additional endpoint characteristics that are only defined for
 	// endpoints of devices operating at above Gen 1 speed.
 	// The SuperSpeedPlus Isochronous Endpoint Companion descriptor shall immediately follow
@@ -576,16 +577,16 @@ func RegisterDescriptorType(typ DescriptorType, desc Descriptor) {
 	descriptorMap[typ] = reflect.TypeOf(desc)
 }
 
-func ParseDescriptor(data []byte) (Descriptor, error) {
-	reader := bytes.NewReader(data)
-	hdr, err := readDescriptorHeader(reader)
-	if err != nil {
-		return nil, err
+func readDescriptorHeader(i io.Reader) (*DescriptorHeader, error) {
+	header := DescriptorHeader{
+		Length:         0,
+		DescriptorType: 0,
 	}
-	return createDescriptor(hdr, reader)
+	err := binary.Read(i, binary.BigEndian, &header)
+	return &header, err
 }
 
-func newDescriptor(hdr DescriptorHeader) (interface{}, reflect.Value) {
+func newDescriptor(hdr DescriptorHeader) (any, reflect.Value) {
 	if descriptor, exist := descriptorMap[hdr.DescriptorType]; exist {
 		x := reflect.New(descriptor)
 		x.Elem().Field(0).Set(reflect.ValueOf(hdr))
@@ -596,10 +597,10 @@ func newDescriptor(hdr DescriptorHeader) (interface{}, reflect.Value) {
 	return x.Interface(), x
 }
 
-func createDescriptor(header DescriptorHeader, i io.Reader) (Descriptor, error) {
-	descriptor, ptrVal := newDescriptor(header)
+func readDescriptor(header *DescriptorHeader, i io.Reader) (Descriptor, error) {
+	descriptor, ptrVal := newDescriptor(*header)
 	if customReader, implements := descriptor.(DescriptorParser); implements {
-		if err := customReader.ReadUSBDescriptor(header, i); err != nil {
+		if err := customReader.ReadUSBDescriptor(*header, i); err != nil {
 			return nil, err
 		}
 		return descriptor.(Descriptor), nil
@@ -632,4 +633,29 @@ loop:
 		}
 	}
 	return descriptor.(Descriptor), nil
+}
+
+func ReadDescriptors(i io.Reader, descriptorCB func(d Descriptor)) error {
+	var err error
+	var hdr *DescriptorHeader
+	for hdr, err = readDescriptorHeader(i); err == nil; hdr, err = readDescriptorHeader(i) {
+		descriptor, err := readDescriptor(hdr, i)
+		if err != nil {
+			return err
+		}
+		descriptorCB(descriptor)
+	}
+	if err == io.EOF {
+		return nil
+	}
+	return err
+}
+
+func ParseDescriptor(data []byte) (Descriptor, error) {
+	reader := bytes.NewReader(data)
+	hdr, err := readDescriptorHeader(reader)
+	if err != nil {
+		return nil, err
+	}
+	return readDescriptor(hdr, reader)
 }
