@@ -115,14 +115,8 @@ func FindDevices(filter func(device *Device) bool) ([]*Device, error) {
 }
 
 type SysfsDescriptors struct {
-	//	IDProduct           uint16
-	//	IDVendor            uint16
-	Manufacturer string
-	Product      string
-	//	BNumConfigurations  int
-	//	BConfigurationValue int
-	//	BDeviceClass        ClassCode
-	//	BDeviceSubClass     SubClass
+	Manufacturer     string
+	Product          string
 	DeviceDescriptor *DeviceDescriptor
 	Interfaces       []*InterfaceDescriptor
 	Endpoints        map[*InterfaceDescriptor][]*EndpointDescriptor
@@ -136,30 +130,12 @@ func (d *Device) GetSysfsDescriptors() (*SysfsDescriptors, error) {
 		Endpoints:        make(map[*InterfaceDescriptor][]*EndpointDescriptor, 20),
 		OtherDescriptors: make([]Descriptor, 0, 20),
 	}
-	//	if x, err := d.ReadSysfsAttrInt("idProduct", 16, 0); err == nil {
-	//		res.IDProduct = uint16(x)
-	//	}
-	//	if x, err := d.ReadSysfsAttrInt("idVendor", 16, 0); err == nil {
-	//		res.IDVendor = uint16(x)
-	//	}
 	if x, err := d.ReadSysfsString("manufacturer"); err == nil {
 		res.Manufacturer = x
 	}
 	if x, err := d.ReadSysfsString("product"); err == nil {
 		res.Product = x
 	}
-	//	if x, err := d.ReadSysfsAttrInt("bConfigurationValue", 10, 0); err == nil {
-	//		res.BConfigurationValue = int(x)
-	//	}
-	//	if x, err := d.ReadSysfsAttrInt("bNumConfigurations", 10, 0); err == nil {
-	//		res.BNumConfigurations = int(x)
-	//	}
-	//	if x, err := d.ReadSysfsAttrInt("bDeviceClass", 16, 0); err == nil {
-	//		res.BDeviceClass = ClassCode(x)
-	//	}
-	//	if x, err := d.ReadSysfsAttrInt("bDeviceSubClass", 16, 0); err == nil {
-	//		res.BDeviceSubClass = SubClass(x)
-	//	}
 	if file, err := openSysfsAttr(d.Name, "descriptors"); err == nil {
 		var lastInterfaceDescriptor *InterfaceDescriptor
 		defer file.Close()
